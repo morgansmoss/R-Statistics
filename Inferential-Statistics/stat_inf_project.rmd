@@ -1,0 +1,82 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+ 
+```{r load-data}
+load("gss.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+The General Social Survey (GSS) contains data drawn from a sample that uses an area probability design that randomly selects households across the United States to participate in the survey. Participation in the survey interview is completely voluntary. The data is cumulative of the surveys between 1972-2012 and the questions that are asked can vary due to the year. However, if the same question is asked, the wording is kept the same to help with consistency. Because the sample is randomly selected, we can consider the data to be generalizable. However, since an experiment has not been performed, we cannot infer any causality.
+
+* * *
+
+## Part 2: Research question
+
+Is there a correlation between religious service attendance and confidence in medicine? There have been recent news stories where religious people neglect themselves or loved ones medical issues in favor of prayer. I would like to see if the collected data supports this notion, or if these stories are coincidental.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+```{r}
+med <- gss %>%
+  filter(year >= 1990) %>%
+  select(attend, conmedic) %>%
+  mutate_all(funs(replace(., is.na(.), "Never")))
+```
+I created a new dataset that limits responses from 1990-2012 and only shows responses for attendance and confidence in medicine. I had to edit the 'attend' variable because the original dataset had zero responses for "Never" attending religious services (which I find highly unlikely). I mutated the variable to set all "NA" to equal "Never". This may be overly presumptuous, but I believe it to be more likely than the alternative.
+```{r}
+table(med)
+ggplot(med, aes(attend, conmedic)) +
+    geom_jitter()
+```
+
+A jitter plot shows that people who attend religious services responded "Hardly Any" more than those who do not attend.
+
+* * *
+
+## Part 4: Inference
+
+$H_0:$The frequency in which people attend religious services has no bearing on his/her confidence in medicine.
+
+$H_A:$The frequency in which people attend religious services has some relationship with his/her confidence in medicine.
+
+###Conditions:
+**Independence:** Sample observations are assumed to be independent because they were randomly sampled, $n$<10% of the population of the United States, and each case only contributes to one cell in the table.
+
+**Sample size:** Sample size is adequate since each scenario has at least 5 expected cases (which is proved after using the 'inference' function).
+
+###Methods:
+A chi-squared indepencence test is used since we are comparing the relationship between two categorical variables.
+
+###Inference:
+
+```{r}
+inference(data = med, x = attend, y = conmedic, type = "ht", statistic = "proportion", method = "theoretical", null = NULL, alternative = "greater")
+```
+
+###Results:
+
+The $\chi^{2}$ test statistic equals 101.0921 with a $df$ of 16. This leads to a $p$ so small that it is basically zero. Due to the low $p$ we reject the null hypothesis in favor of the alternative. Meaning that there is strong evidence that there is a relationship between frequency in which people attend religious services and his/her confidence in medicine.
