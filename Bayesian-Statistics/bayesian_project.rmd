@@ -1,0 +1,183 @@
+---
+title: "Bayesian modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(MASS)
+library(dplyr)
+library(statsr)
+library(BAS)
+library(gridExtra)
+library(grid)
+```
+
+### Load data
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+The data set is comprised of 651 randomly sampled movies produced and released between 1970 and 2016. The data includes basic information such as when the theatrical release was, what studio produced it, and who was involved in the movie. As well as scores from IMDB (The Internet Movie Database) and Rotten Tomatoes. Since the movies were selected via random sample the data can be considered generalizable. However, because an experiment was not performed we cannot assume causality, only correlation. I have reservations as to how useful this data set will be since it includes some obscure movies which may have skewed review scores.
+
+* * *
+
+## Part 2: Data manipulation
+
+In order to develop a Bayesian regression model to fit my employers specifications, I need to create a few new variables.
+
+* `feature_film`: "yes" if `title_type` is Feature Film, "no" otherwise
+
+* `drama`: "yes" if `genre` is Drama, "no" otherwise
+
+* `mpaa_rating_R`: "yes" if `mpaa_rating` is R, "no" otherwise
+
+* `oscar_season`: "yes" if movie is released in November, October, or December (based on `thtr_rel_month`), "no" otherwise
+
+* `summer_season`: "yes" if movie is released in May, June, July, or August (based on `thtr_rel_month`), "no" otherwise
+```{r}
+movies_new = movies %>%
+  mutate(feature_film = ifelse(title_type == "Feature Film", "yes", "no")) %>%
+  mutate(drama = ifelse(genre == "Drama", "yes", "no")) %>%
+  mutate(mpaa_rating_R = ifelse(mpaa_rating == "R", "yes", "no")) %>%
+  mutate(oscar_season = ifelse(thtr_rel_month == 10 | thtr_rel_month == 11
+                               | thtr_rel_month == 12, "yes", "no")) %>%
+  mutate(summer_season = ifelse(thtr_rel_month == 5 | thtr_rel_month == 6
+                                | thtr_rel_month == 7 | thtr_rel_month == 8, "yes", "no"))
+```
+
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+```{r}
+movies_new <- movies_new %>%
+  select("audience_score", "feature_film", "drama", "runtime", "mpaa_rating_R", "thtr_rel_year", "oscar_season", "summer_season", "imdb_rating", "imdb_num_votes", "critics_score", "best_pic_nom", "best_pic_win", "best_actor_win", "best_actress_win", "best_dir_win", "top200_box")
+
+```
+
+I limited the variables to only contain what will be in our full model (`audience_score`, `feature_film`, `drama`, `runtime`, `mpaa_rating_R`, `thtr_rel_year`, `oscar_season`, `summer_season`, `imdb_rating`, `imdb_num_votes`, `critics_score`, `best_pic_nom`, `best_pic_win`, `best_actor_win`, `best_actress_win`, `best_dir_win`, `top200_box`).
+
+```{r}
+ggplot(data = movies_new, aes(x = audience_score, y = ..density..)) +
+  geom_histogram(bins = 30, fill = 'lightblue', color = 'black') +
+  geom_density(size = 1, color = 'orange') +
+  geom_vline(aes(xintercept = mean(movies_new$audience_score), color = 'red'), size = 1.5, show.legend = F) +
+  geom_vline(aes(xintercept = median(movies_new$audience_score), color = 'blue'), size = 1.5, show.legend = F) +
+  geom_label(aes(x = (mean(movies_new$audience_score) - 5), y = .015, label = 'Mean', color = 'red'), show.legend = F) +
+  geom_label(aes(x = (median(movies_new$audience_score) + 5), y = .0175, label = 'Median', color = 'blue'), show.legend = F)
+summary(movies_new$audience_score)
+```
+The histogram of `audience_score` shows a slight left skewedness, showing a higher density of scores around ~45 and ~80. The mean of the scores is 62.36 and the median is 65.
+
+```{r}
+p1 = ggplot(movies_new, aes(audience_score, fill = feature_film)) +
+  geom_density(alpha = .2) + labs(title = "audience score vs. feature_film") + 
+               labs(x = "feature_film", y = "Density")
+    
+p2 = ggplot(movies_new, aes(audience_score, fill = drama)) +
+  geom_density (alpha = .2) + labs(title = "audience score vs. drama") + 
+               labs(x = "drama", y = "Density")
+    
+p3 = ggplot(movies_new, aes(audience_score, fill = top200_box)) +
+  geom_density (alpha = .2) + labs(title = "audience score vs. top200_box") +
+               labs(x = "top200_box", y = "Density")
+    
+p4 = ggplot(movies_new, aes(audience_score, fill = oscar_season)) +
+  geom_density(alpha = .2) + labs(title = "audience score vs. oscar_season") + 
+               labs(x = "oscar_season", y = "Density")
+
+p5 = ggplot(movies_new, aes(audience_score, fill = summer_season)) +
+  geom_density (alpha = .2) + labs(title = "audience score vs. summer_season") + 
+               labs(x = "summer_season", y = "Density")
+    
+p6 = ggplot(movies_new, aes(audience_score, fill = best_pic_nom)) +
+  geom_density (alpha = .2) + labs(title = "audience score vs. best_pic_nom") + 
+                labs(x = "best_pic_nom", y = "Density")
+    
+p7 = ggplot(movies_new, aes(audience_score, fill = best_pic_win)) +
+  geom_density(alpha = .2) + labs(title = "audience score vs. best pic win") + 
+               labs(x = "best_pic_win", y = "Density")
+    
+p8 = ggplot(movies_new, aes(audience_score, fill = best_actor_win)) +
+  geom_density (alpha = .2) + labs(title = "audience score vs. best_actor_win") + 
+               labs(x = "best_actor_win", y = "Density")
+    
+p9 = ggplot(movies_new, aes(audience_score, fill = best_dir_win)) +
+  geom_density (alpha = .2) + labs(title = "audience score vs. best_dir_win") + 
+               labs(x = "best_dir_win", y = "Density")
+    
+p10 = ggplot(movies_new, aes(audience_score, fill = best_actress_win))+
+  geom_density (alpha = .2) + labs(title = "audience score vs. best_actress_win") + 
+                 labs(x = "best_actress_win", y = "Density")
+    
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+grid.arrange(p5, p6, p7, p8, ncol = 2)
+grid.arrange(p9, p10, ncol = 2, nrow = 2)
+```
+
+The previous plots show the various densities of `audience_score` against the new variables. Some variables seem to have little to no affect on the score, whereas variables such as `feature_film`, `top200_box`, `best_pic_nom`, and `best_pic_win` do.
+
+```{r}
+full.lm = lm(audience_score ~ ., data = movies_new)
+plot(full.lm)
+plot(density(resid(full.lm)))
+summary(full.lm)
+```
+
+According to a full standard linear model of the new variables, the residuals are not very normal nor do they have standard variance. Thus, does not meet the conditions of the linear regression model. However, we can take note that certain variables had statistical significance in the model (i.e., `runtime`, `mpaa_rating_R`, `thtr_rel_year`, `imdb_rating`, `critics_score`, `best_pic_win`, `best_actress_win`).
+
+
+* * *
+
+## Part 4: Modeling
+
+Since we have 16 predictors, we have quite a large number of possible models. Where $n = # of predictors$, $# of models = 2^n$. Therefore, there are 65536 possible models. A comprehensive way to address model uncertainty is BMA (Bayes Model Averaging), which calculates the posterior distributions of coefficients and predictions from new data. We will be using Bayesian information criterion (BIC) for our model selection. BIC is criterion for model selection for a finite series of models. One desires the BIC score, to reach this we must select the best and simplest model since penalties are implemented to avoid overfitting. 
+```{r}
+#Here we will start with the full model.
+full.bma = bas.lm(audience_score ~ ., prior = "BIC", modelprior = uniform(), data = movies_new)
+summary(full.bma)
+image(full.bma, rotate = F)
+```
+
+As we can see, the model with the highest probability and the lowest BIC includes `runtimes`, `imdb_rating`, and `critics_score`.
+```{r}
+final.lm = lm(audience_score ~ runtime + imdb_rating + critics_score, data = movies_new)
+summary(final.lm)
+BIC(final.lm)
+```
+
+* * *
+
+## Part 5: Prediction
+
+To test my final model I will use it to try and predict the score of 'The Accountant'.
+```{r}
+final.bic = bas.lm(audience_score ~ runtime + imdb_rating + critics_score, prior = "BIC", modelprior = uniform(), data = movies_new)
+accountant = data.frame(audience_score = 77, critics_score = 52, runtime = 128, imdb_rating = 7.4)
+predict.accountant = predict(final.bic, accountant)
+predict.accountant$Ybma
+```
+The model predicts an audience score of ~75, which is 2 points away from the true audience score but still very close. The for the movie came from the [Rotten Tomatoes](https://www.rottentomatoes.com/m/the_accountant_2016/) and [IMDB](http://www.imdb.com/title/tt2140479/) pages for The Accountant.
+
+* * *
+
+## Part 6: Conclusion
+
+The predictive model selected seems to be the best under the parameters we were given by our employer. While `imdb_rating`, `critics_score`, and `runtime` all can be used to predict the `audience_score`, `imdb_rating` has the higest posterior probability and carries the most weight in the prediction of the `audience_score`. This is unsurprising since both values are acquired in similar fashions. I suspect there are many other factors that account for what makes a movie successful, but that is outside the scope of the course and the data we were provided.
