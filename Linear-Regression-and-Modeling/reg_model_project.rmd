@@ -1,0 +1,174 @@
+---
+title: "Modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(GGally)
+```
+
+### Load data
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+The data set is comprised of 651 randomly sampled movies produced and released between 1970 and 2016. The data includes basic information such as when the theatrical release was, what studio produced it, and who was involved in the movie. As well as scores from IMDB (The Internet Movie Database) and Rotten Tomatoes. Since the movies were selected via random sample the data can be considered generalizable. However, because an experiment was not performed we cannot assume causality, only correlation. I have reservations as to how useful this data set will be since it includes some obscure movies which may have skewed review scores.
+
+* * *
+
+## Part 2: Research question
+
+What attributes of a movie are correlated with more popular movies?
+
+As a data scientist for Paramount Pictures, this information can be used to predict the success of a movie. Or, said information could be used to create better scoring movies.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+```{r}
+movies_new <- movies %>%
+  filter(thtr_rel_year >= 2000) %>%
+  filter(title_type == "Feature Film") %>%
+  filter(mpaa_rating != "Unrated") %>%
+  select(-imdb_url, -rt_url)
+```
+
+I decided to limit the sampled movies to ones that were released in the year 2000 and beyond. Reason being that more recent movies would be a better indicator as to what modern audiences are looking for in movies. Also, I limited the type of movies to Feature Films since documentaries and TV Movies don't generally get shown in most theaters. I did the same with the MPAA Rating, generally Unrated and NC-17 movies aren't shown in most theaters (there were no NC-17 movies within the parameters I have set, so no need to add more code removing them). I also removed the IMDB and Rotten Tomatoes' URL variable since they are irrelevant.
+
+```{r}
+ggplot(data = movies_new, aes(x = genre)) +
+  geom_bar(fill = "#009E73") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0))
+ggplot(data = movies_new, aes(x = mpaa_rating)) +
+  geom_bar(fill = "#CC79A7") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0))
+ggplot(data = movies_new, aes(x = thtr_rel_year)) +
+  geom_bar(fill = "#56B4E9") +
+  coord_fixed(ratio = .2) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0))
+```
+
+These plots give a general overview of some of the basic information pertaining to the movies.
+
+```{r}
+summary(movies_new$imdb_rating)
+summary(movies_new$critics_score)
+summary(movies_new$audience_score)
+```
+
+The summary statistics show that between the two movie review websites the audience ratings have a smaller range (11, 94) than the critic scores (1, 98). IMDB's ratings have an even smaller range (19, 85). 
+
+* * *
+
+## Part 4: Modeling
+
+Since we associate review scores with how well a movie performs, we will consider the movie score as our response variable. However, we have three scores to choose from. Rotten Tomatoes' scores are differentiated between critic reviews and audience (the public) reviews. IMDB on the otherhand, is a combination of both. It is likely that these scores are collinear, which is something that we can test.
+
+```{r}
+ggpairs(movies_new, columns = c("imdb_rating", "critics_score", "audience_score"))
+```
+
+As you can see, the correlation between the different scores is quite high. Due to this collinearity, including them all in the model is redundant and unnecessary. We can look at how the scores are distributed and see if any of them are closer to a normal distribution than the others.
+
+```{r}
+ggplot(data = movies_new, aes(x = imdb_rating)) +
+  geom_histogram(fill = "#009E73")
+ggplot(data = movies_new, aes(x = critics_score)) +
+  geom_histogram(fill = "#CC79A7")
+ggplot(data = movies_new, aes(x = audience_score)) +
+  geom_histogram(fill = "#56B4E9")
+```
+
+IMDB's scores seem to be closer to a normal distribution. It is unimodal and slightly left skewed. Because of this, we are using the IMDB scores as our response variable.
+
+Now, for the variables we will be including in the model, we will include variables that we can control when creating a new film. Such as release date, runtime, and to a certain extent MPAA Rating. However, we also should include variables that are indicators of good movies, such as if the director, main actors/actresses recieved an award given by the Academy of Motion Picture Arts and Sciences (AMPAS). We cannot control the studio from which the film is produced since we work for Paramount. Also, specific actor and director names yield such a wide breadth of results that creating the model would become too unwieldy. That leaves the following variables to start out with for our model:
+
+1.  Genre
+2.  Runtime
+3.  MPAA Rating
+4.  Theatrical Release Month
+5.  Theatrical Release Day
+6.  Best Actor Win
+7.  Best Actress Win
+8.  Best Director Win
+
+```{r}
+m_full <- lm(imdb_rating ~ genre + runtime + mpaa_rating + thtr_rel_month + thtr_rel_day + best_actor_win + best_actress_win + best_dir_win, data = movies_new)
+summary(m_full)
+anova(m_full)
+```
+
+The adjusted R Squared (0.3182) can most likely be improved. In order to create a model with the highest predictive value, we will one by one remove the variables with the highest, non-significant p-value.
+
+```{r}
+m_1 <- lm(imdb_rating ~ genre + runtime + mpaa_rating + thtr_rel_month + best_actor_win + best_actress_win + best_dir_win, data = movies_new)
+summary(m_1)
+```
+```{r}
+m_2 <- lm(imdb_rating ~ genre + runtime + mpaa_rating + thtr_rel_month + best_actor_win + best_actress_win, data = movies_new)
+summary(m_2)
+```
+```{r}
+m_3 <- lm(imdb_rating ~ genre + runtime + mpaa_rating + thtr_rel_month + best_actor_win, data = movies_new)
+summary(m_3)
+```
+```{r}
+m_4 <- lm(imdb_rating ~ genre + runtime + mpaa_rating + best_actor_win, data = movies_new)
+summary(m_4)
+```
+```{r}
+m_5 <- lm(imdb_rating ~ genre + runtime + mpaa_rating, data = movies_new)
+summary(m_5)
+anova(m_5)
+```
+
+With this final model, the R Squared value has gone up to 0.3294. This model has every variable that is statistically significant.
+
+Testing the model to see if there is constant and random scatter around the residuals shows that the model is valid.
+
+```{r}
+ggplot(m_5, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "lm")
+```
+
+* * *
+
+## Part 5: Prediction
+
+The capability of our model to predict the success of a movie was tested on two movies that were released in 2016.The two movies selected were Finding Dory and Batman v Superman: Dawn of Justice. The data for these movies were retrieved from IMDB to be consistent with our model.
+
+```{r}
+dataDory <- data.frame(genre = "Animation", runtime = 97, mpaa_rating = "PG")
+predict(m_5, dataDory, interval = "predict")
+dataBat <- data.frame(genre = "Action & Adventure", runtime = 151, mpaa_rating = "PG-13")
+predict(m_5, dataBat, interval = "predict")
+```
+
+The model predicted the rating for Finding Dory to be 6.3 with a 95% confidence interval between (4.2, 8.4) when the actual score was 7.4. For Batman v Superman: Dawn of Justice the predicted score was 6.5 with a 95% confidence interval between (4.6, 8.3) with a true score of 6.7. The model was a little off for Finding Dory but nearly spot on for Batman v Superman. However, the very large confidence interval points to pretty poor predictive capability.
+
+* * *
+
+## Part 6: Conclusion
+
+To answer the research question, "What attributes of a movie are correlated with more popular movies?", our model shows that genre, runtime, and MPAA rating have the most significant impact on a film's performance. The predicting power of our model could definitely use some improvement. I suspect that there are other factors that would aid in increasing the predictive power of the predictive model. A larger sample size or separate models for certain variables
+are two examples of such improvements.
