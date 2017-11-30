@@ -1,0 +1,120 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+Make sure your data and R Markdown files are in the same directory. When loaded
+your data file will be called `brfss2013`. Delete this note when before you submit 
+your work. 
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+
+
+* * *
+
+## Part 1: Data
+The data was collected via telephone interviews (both landline and cellular) conducted by the Centers for Disease Control and Prevention's (CDC) Population Health Surveillance Branch. The interviewees were residents of the United States, including the 50 states, District of Columbia, Puerto Rico, Guam. For landline interviews, data was collected from a single, randomly selected 18 year or older adult per household. For cellular interviews, data was collected from an adult who resides in a private residence or college housing. Since an experiment has not been performed, we cannot infer any causality from relationships between variables. We can generalize the information to US residents who have a telephone.
+
+* * *
+
+## Part 2: Research questions
+
+**Research quesion 1:**
+Of Texas state residents, do veterans have a higher number of days where his/her mental health is not good compared to the rest of the residents in the state? This information could help to see if mental healthcare needs to be improved for veterans.
+
+**Research quesion 2:**
+What state has the highest percentage of women who are both pregnant and currently smoking? This information could help establish which states need to better their education for pregnant women.
+
+**Research quesion 3:**
+Is there a correlation between number of alcoholic beverages consumed per day and body mass index (BMI)? This information can be used to reinforce the idea that there is a correlation between excessive drinking is to poor health.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+NOTE: Insert code chunks as needed by clicking on the "Insert a new code chunk" 
+button (green button with orange arrow) above. Make sure that your code is visible
+in the project you submit. Delete this note when before you submit your work.
+
+**Research quesion 1:**
+
+```{r}
+vet_health <- brfss2013 %>%
+                filter(X_state == "Texas", veteran3 == "Yes", !is.na(menthlth))
+nonvet_health <- brfss2013 %>%
+                    filter(X_state == "Texas", veteran3 != "Yes", !is.na(menthlth))
+```
+Created two new datasets, one containing Texans who responded as a veteran and one containing Texans who did not respond as a veteran.
+```{r}
+ggplot(data = vet_health, aes(x = menthlth)) +
+  geom_histogram()
+ggplot(data = nonvet_health, aes(x = menthlth)) +
+  geom_histogram()
+```
+
+Both groups have a large number of respondents who experienced zero days where their mental health was not good.
+```{r}
+vet_health %>%
+  summarise(avg_days = mean(menthlth))
+nonvet_health %>%
+  summarise(avg_days = mean(menthlth))
+```
+According to this data, veterans in the state of Texas experienced fewer days where their mental health was not good compared to the rest of the state (2.425 < 3.145).
+
+**Research quesion 2:**
+
+```{r}
+brfss2013 <- brfss2013 %>%
+  mutate(preg_smoker = ifelse(pregnant=="Yes" & X_rfsmok3=="Yes", 1, 0))
+```
+Created a new variable of people who responded as both pregnant and a current smoker.
+```{r}
+pregnant_smoker <- brfss2013 %>%
+  select(X_state, preg_smoker) %>%
+  group_by(X_state) %>%
+  summarise(total = n(), preg_smoker = sum(preg_smoker, na.rm=TRUE))
+pregnant_smoker <- pregnant_smoker %>%
+  mutate(percentage = preg_smoker/total)
+```
+Created a new dataset that has both the total number of respondents, the number of respondents who responded "Yes" to both being pregnant and a current smoker, and the percentage of the total that responded as a pregnant smoker.
+```{r}
+pregnant_smoker %>%
+  arrange(-percentage)
+```
+Sorting the resulting percentages in descending order shows that the prevalence of pregnant smokers is highest in Guam (.0026), Missouri (.0015), and Wisconsin (.0014).
+
+
+**Research quesion 3:**
+
+```{r}
+drink_bmi <- brfss2013 %>%
+  select(X_bmi5, avedrnk2) %>%
+  filter(rowSums(is.na(.)) < 1)
+```
+Created a new dataset that only contained the calculated BMI and average alcoholic beverages consumed in a 30 day period. The filter function removed rows with NA or missing responses. This was done to make working with the data easier.
+
+```{r}
+ggplot(drink_bmi, aes(avedrnk2, X_bmi5)) +
+  geom_point()
+```
+
+According to this specific observation, there does not seem to be a strong association between average drinks per month and BMI. This could be because of the disparities of people's height, weight, and age. An experiment would lead to stronger insights into the problem.
